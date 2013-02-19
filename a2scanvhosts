@@ -1,0 +1,257 @@
+#!/bin/sh
+#
+# Julien Fontanet <julien.fontanet@vates.fr>
+
+# Fatal error if an untested command failed.
+set -e
+
+# Fatal error if usage of an undefined variable.
+set -u
+
+########################################
+
+basename=$(basename "./$0")
+
+# The suffix is used when there are multiple instances of Apache.
+case "$basename" in
+	*-*)
+		suffix=-${basename##*-}
+		;;
+	*)
+		suffix=
+		;;
+esac
+
+: ${APACHE_CONFDIR:=/etc/apache2$suffix}
+: ${APACHE_VHOSTSDIR:=$APACHE_CONFDIR/vhosts}
+: ${APACHE_VHOSTSROOT:=/srv/www}
+
+: ${PHP_FPM_POOLDIR:=/etc/php5/fpm/pool.d}
+
+readonly basename suffix APACHE_CONFDIR APACHE_VHOSTSDIR APACHE_VHOSTSROOT
+
+########################################
+
+# random_string
+random_string()
+{
+	tr -cd '[:alnum:]' < /dev/urandom | head -c 20
+}
+
+# scan domain DIR
+scan()
+{
+	local domain dir ssl_cert ssl_chain ssl_key http https subdomain php_group token
+
+	echo "$@"
+
+	domain=$1
+	dir=$2
+
+	# PHP group.
+	php_group=$(stat --format=%G "$2")
+	if [ "$php_group" = root ]
+	then
+		php_group=www-data
+	fi
+
+	# SSL certificate and private key.
+	ssl_cert="$dir/_ssl/cert.pem"
+	ssl_key="$dir/_ssl/key.pem"
+	if ! { [ -f "$ssl_cert" ] && [ -f "$ssl_key" ]; }
+	then
+		ssl_cert=${SSL_CERT:-}
+		ssl_key=${SSL_KEY:-}
+	fi
+
+	# SSL certificate chain.
+	ssl_chain="$dir/_ssl/chain.pem"
+	if ! [ -f "$ssl_chain" ]
+	then
+		ssl_chain=${SSL_CHAIN:-}
+	fi
+
+	http="$dir/_http"; [ -d "$http" ] || http=
+	if [ "$ssl_cert" ]
+	then
+		https="$dir/_https"; [ -d "$https" ] || https=$http
+	else
+		https=
+	fi
+
+	token=$(random_string)
+
+	# HTTP documents.
+	if [ "$http" ]
+	then
+		cat <<EOF > "$APACHE_VHOSTSDIR/$domain.auto.conf"
+<VirtualHost *:80>
+	# Mandatory.
+	ServerName $domain
+
+	# Administator email.
+	ServerAdmin webmaster@vates.fr
+
+	# Document root.
+	DocumentRoot "$http"
+	<Directory "$http">
+		AllowOverride AuthConfig FileInfo Indexes Limit Options
+		Order Allow,Deny
+		Allow from all
+	</Directory>
+
+	# Restricts PHP functions to a handful of directory.
+	#
+	# It would be a good idea to limit PHP to a subset of /tmp because there might
+	# be sensitive data in it. The only problem is that this directory should
+	# already exists and have the correct permissions.
+	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
+
+	<IfModule mod_fastcgi.c>
+			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+					SetHandler php5-fcgi
+			</FilesMatch>
+			Action php5-fcgi /$token
+			Alias /$token /$token
+			FastCgiExternalServer /$token -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+	</IfModule>
+	<IfModule !mod_fastcgi.c>
+			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+					Order Allow,Deny
+					Deny from all
+			</FilesMatch>
+	</IfModule>
+
+	# User configuration may be done in the following file.
+	Include "$APACHE_VHOSTSDIR/$domain.local*.conf"
+</VirtualHost>
+EOF
+	elif [ "$https" ]
+	then
+		cat <<EOF > "$APACHE_VHOSTSDIR/$domain.auto.conf"
+<VirtualHost *:80>
+	# Mandatory.
+	ServerName $domain
+
+	# Administator email.
+	ServerAdmin webmaster@vates.fr
+
+	# Redirection to HTTPS version.
+	RedirectPermanent / https://$domain/
+</VirtualHost>
+EOF
+	fi
+
+	# HTTPS documents.
+	if [ "$https" ]
+	then
+		cat <<EOF > "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
+<VirtualHost *:443>
+	# Mandatory.
+	ServerName $domain
+
+	# Administator email.
+	ServerAdmin webmaster@vates.fr
+
+	# Enables the SSL engine.
+	SSLEngine On
+
+	# Server certificate (public).
+	SSLCertificateFile "$ssl_cert"
+
+	# Server private key.
+	SSLCertificateKeyFile "$ssl_key"
+
+EOF
+
+		if [ "$ssl_chain" ]
+		then
+cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
+	# Certificate authority chain.
+	SSLCertificateChainFile "$ssl_chain"
+
+EOF
+		fi
+
+cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
+	# Document root.
+	DocumentRoot "$https"
+	<Directory "$https">
+		AllowOverride AuthConfig FileInfo Indexes Limit Options
+		Order Allow,Deny
+		Allow from all
+	</Directory>
+
+	# Restricts PHP functions to a handful of directory.
+	#
+	# It would be a good idea to limit PHP to a subset of /tmp because there might
+	# be sensitive data in it. The only problem is that this directory should
+	# already exists and have the correct permissions.
+	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
+
+	<IfModule mod_fastcgi.c>
+			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+					SetHandler php5-fcgi
+			</FilesMatch>
+			Action php5-fcgi /$token-ssl
+			Alias /$token-ssl /$token-ssl
+			FastCgiExternalServer /$token-ssl -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+	</IfModule>
+	<IfModule !mod_fastcgi.c>
+			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+					Order Allow,Deny
+					Deny from all
+			</FilesMatch>
+	</IfModule>
+
+	# User configuration may be done in the following file.
+	Include "$APACHE_VHOSTSDIR/${domain}_ssl.local*.conf"
+</VirtualHost>
+EOF
+	fi
+
+	if [ "$http" ] || [ "$https" ]
+	then
+		cat <<EOF > "$PHP_FPM_POOLDIR/$domain.auto.conf"
+[$domain]
+user  = nobody
+group = $php_group
+
+listen = /var/run/php5-fpm-$token.sock
+listen.owner = root
+listen.group = www-data
+listen.mode  = 0060
+
+pm = dynamic
+pm.max_children      = 5
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
+EOF
+	fi
+
+	for subdomain in "$dir"/*
+	do
+		# Only directories.
+		[ -d "$subdomain" ] || continue
+
+		subdomain=$(basename "$subdomain")
+
+		# Subdomains starts with a “@”.
+		case "$subdomain" in
+			"@"*)
+				subdomain=${subdomain#"@"}
+				;;
+			*)
+				continue
+				;;
+		esac
+
+		SSL_CERT=$ssl_cert \
+			SSL_CHAIN=$ssl_chain \
+			SSL_KEY=$ssl_key \
+			scan "$subdomain${domain:+.$domain}" "$dir/@$subdomain"
+	done
+}
+
+rm -f "$APACHE_VHOSTSDIR"/*.auto.conf
+scan "" "$APACHE_VHOSTSROOT"

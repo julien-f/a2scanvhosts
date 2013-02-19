@@ -108,18 +108,22 @@ scan()
 	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
 
 	<IfModule mod_fastcgi.c>
-			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-					SetHandler php5-fcgi
-			</FilesMatch>
-			Action php5-fcgi /$token
-			Alias /$token /$token
-			FastCgiExternalServer /$token -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+			SetHandler php5-fcgi
+		</FilesMatch>
+		<DirectoryMatch /$token>
+			Order Deny,Allow
+			Allow from all
+		</DirectoryMatch>
+		Action php5-fcgi /$token
+		Alias /$token /$token
+		FastCgiExternalServer /$token -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
-			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-					Order Allow,Deny
-					Deny from all
-			</FilesMatch>
+		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+			Order Allow,Deny
+			Deny from all
+		</FilesMatch>
 	</IfModule>
 
 	# User configuration may be done in the following file.
@@ -190,18 +194,22 @@ cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
 	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
 
 	<IfModule mod_fastcgi.c>
-			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-					SetHandler php5-fcgi
-			</FilesMatch>
-			Action php5-fcgi /$token-ssl
-			Alias /$token-ssl /$token-ssl
-			FastCgiExternalServer /$token-ssl -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+			SetHandler php5-fcgi
+		</FilesMatch>
+		<DirectoryMatch /$token-ssl>
+			Order Deny,Allow
+			Allow from all
+		</DirectoryMatch>
+		Action php5-fcgi /$token-ssl
+		Alias /$token-ssl /$token-ssl
+		FastCgiExternalServer /$token-ssl -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
-			<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-					Order Allow,Deny
-					Deny from all
-			</FilesMatch>
+		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+			Order Allow,Deny
+			Deny from all
+		</FilesMatch>
 	</IfModule>
 
 	# User configuration may be done in the following file.

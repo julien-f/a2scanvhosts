@@ -41,18 +41,23 @@ random_string()
 # scan domain DIR
 scan()
 {
-	local domain dir ssl_cert ssl_chain ssl_key http https subdomain php_group token
+	local domain dir ssl_cert ssl_chain ssl_key http https subdomain php_user php_group token
 
 	echo "$@"
 
 	domain=$1
 	dir=$2
 
-	# PHP group.
-	php_group=$(stat --format=%G "$2")
-	if [ "$php_group" = root ]
+	# PHP user and group.
+	php_user=www-data
+	php_group=www-data
+	if [ -f "$dir/_php_user" ]
 	then
-		php_group=www-data
+		php_user=$(stat --format=%U "$dir/_php_user")
+	fi
+	if [ -f "$dir/_php_group" ]
+	then
+		php_group=$(stat --format=%U "$dir/_php_group")
 	fi
 
 	# SSL certificate and private key.
@@ -222,7 +227,7 @@ EOF
 	then
 		cat <<EOF > "$PHP_FPM_POOLDIR/$domain.auto.conf"
 [$domain]
-user  = nobody
+user  = $php_user
 group = $php_group
 
 listen = /var/run/php5-fpm-$token.sock
@@ -230,10 +235,10 @@ listen.owner = root
 listen.group = www-data
 listen.mode  = 0060
 
-pm = dynamic
-pm.max_children      = 5
-pm.min_spare_servers = 1
-pm.max_spare_servers = 3
+pm = ondemand
+pm.max_children         = 5
+pm.process_idle_timeout = 300
+pm.max_requests         = 200
 EOF
 	fi
 

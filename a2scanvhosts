@@ -123,6 +123,9 @@ scan()
 		Action php5-fcgi /$token
 		Alias /$token /$token
 		FastCgiExternalServer /$token -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		<IfModule mod_proxy.c>
+			ProxyPass /$token !
+		</IfModule>
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
 		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
@@ -209,6 +212,9 @@ cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
 		Action php5-fcgi /$token-ssl
 		Alias /$token-ssl /$token-ssl
 		FastCgiExternalServer /$token-ssl -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		<IfModule mod_proxy.c>
+			ProxyPass /$token-ssl !
+		</IfModule>
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
 		<FilesMatch ".+\.ph(p[345]?|t|tml)$">

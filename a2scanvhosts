@@ -62,10 +62,17 @@ scan()
 
 	# SSL certificate and private key.
 	ssl_cert="$dir/_ssl/cert.pem"
-	ssl_key="$dir/_ssl/key.pem"
-	if ! { [ -f "$ssl_cert" ] && [ -f "$ssl_key" ]; }
+	if ! [ -f "$dir/_ssl/cert.pem" ]
 	then
 		ssl_cert=${SSL_CERT:-}
+	fi
+	ssl_key="$dir/_ssl/key.pem"
+	if ! [ -f "$ssl_key" ]
+	then
+		ssl_key="$dir/_ssl/privkey.pem"
+	fi
+	if ! [ -f "$ssl_key" ]
+	then
 		ssl_key=${SSL_KEY:-}
 	fi
 

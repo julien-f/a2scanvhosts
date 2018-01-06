@@ -295,4 +295,7 @@ EOF
 }
 
 rm -f "$APACHE_VHOSTSDIR"/*.auto.conf
+rm -f "$PHP5_FPM_POOLDIR"/*.auto.conf
+rm -f "$PHP7_FPM_POOLDIR"/*.auto.conf
+
 scan "" "$APACHE_VHOSTSROOT"

@@ -26,7 +26,8 @@ esac
 : ${APACHE_VHOSTSDIR:=$APACHE_CONFDIR/vhosts}
 : ${APACHE_VHOSTSROOT:=/srv/www}
 
-: ${PHP_FPM_POOLDIR:=/etc/php5/fpm/pool.d}
+: ${PHP5_FPM_POOLDIR:=/etc/php5/fpm/pool.d}
+: ${PHP7_FPM_POOLDIR:=/etc/php/7.0/fpm/pool.d}
 
 readonly basename suffix APACHE_CONFDIR APACHE_VHOSTSDIR APACHE_VHOSTSROOT
 
@@ -41,12 +42,24 @@ random_string()
 # scan domain DIR
 scan()
 {
-	local domain dir ssl_cert ssl_chain ssl_key http https subdomain php_user php_group token
+	local \
+		dir domain subdomain \
+		http https \
+		php_group php_pooldir php_user php_version \
+		ssl_cert ssl_chain ssl_key \
+		token
 
 	echo "$@"
 
 	domain=$1
 	dir=$2
+
+	#  PHP version
+	php_version=5
+	if [ -f "$dir/_php_version" ]
+	then
+		php_version=$(cat "$dir/_php_version")
+	fi
 
 	# PHP user and group.
 	php_user=www-data
@@ -120,22 +133,22 @@ scan()
 	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
 
 	<IfModule mod_fastcgi.c>
-		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-			SetHandler php5-fcgi
+		<FilesMatch ".+\.ph(p\d?|t|tml)$">
+			SetHandler php-fcgi
 		</FilesMatch>
 		<DirectoryMatch /$token>
 			Order Deny,Allow
 			Allow from all
 		</DirectoryMatch>
-		Action php5-fcgi /$token
+		Action php-fcgi /$token
 		Alias /$token /$token
-		FastCgiExternalServer /$token -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		FastCgiExternalServer /$token -socket /var/run/php-fpm-$token.sock -pass-header Authorization
 		<IfModule mod_proxy.c>
 			ProxyPass /$token !
 		</IfModule>
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
-		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+		<FilesMatch ".+\.ph(p\d?|t|tml)$">
 			Order Allow,Deny
 			Deny from all
 		</FilesMatch>
@@ -209,22 +222,22 @@ cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
 	#php_admin_value open_basedir "$dir:/usr/share/php/:/tmp/:/usr/bin/:/dev/null"
 
 	<IfModule mod_fastcgi.c>
-		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
-			SetHandler php5-fcgi
+		<FilesMatch ".+\.ph(p\d?|t|tml)$">
+			SetHandler php-fcgi
 		</FilesMatch>
 		<DirectoryMatch /$token-ssl>
 			Order Deny,Allow
 			Allow from all
 		</DirectoryMatch>
-		Action php5-fcgi /$token-ssl
+		Action php-fcgi /$token-ssl
 		Alias /$token-ssl /$token-ssl
-		FastCgiExternalServer /$token-ssl -socket /var/run/php5-fpm-$token.sock -pass-header Authorization
+		FastCgiExternalServer /$token-ssl -socket /var/run/php-fpm-$token.sock -pass-header Authorization
 		<IfModule mod_proxy.c>
 			ProxyPass /$token-ssl !
 		</IfModule>
 	</IfModule>
 	<IfModule !mod_fastcgi.c>
-		<FilesMatch ".+\.ph(p[345]?|t|tml)$">
+		<FilesMatch ".+\.ph(p\d?|t|tml)$">
 			Order Allow,Deny
 			Deny from all
 		</FilesMatch>
@@ -238,12 +251,14 @@ EOF
 
 	if [ "$http" ] || [ "$https" ]
 	then
-		cat <<EOF > "$PHP_FPM_POOLDIR/$domain.auto.conf"
+		eval php_pooldir=\$PHP${php_version}_FPM_POOLDIR
+
+		cat <<EOF > "$php_pooldir/$domain.auto.conf"
 [$domain]
 user  = $php_user
 group = $php_group
 
-listen = /var/run/php5-fpm-$token.sock
+listen = /var/run/php-fpm-$token.sock
 listen.owner = root
 listen.group = www-data
 listen.mode  = 0060

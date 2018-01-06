@@ -155,7 +155,7 @@ scan()
 	</IfModule>
 
 	# User configuration may be done in the following file.
-	Include "$APACHE_VHOSTSDIR/$domain.local*.conf"
+	IncludeOptional "$APACHE_VHOSTSDIR/$domain.local*.conf"
 </VirtualHost>
 EOF
 	elif [ "$https" ]
@@ -244,7 +244,7 @@ cat <<EOF >> "$APACHE_VHOSTSDIR/${domain}_ssl.auto.conf"
 	</IfModule>
 
 	# User configuration may be done in the following file.
-	Include "$APACHE_VHOSTSDIR/${domain}_ssl.local*.conf"
+	IncludeOptional "$APACHE_VHOSTSDIR/${domain}_ssl.local*.conf"
 </VirtualHost>
 EOF
 	fi
